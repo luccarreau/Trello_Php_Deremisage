@@ -77,8 +77,16 @@ if (!isset($_SESSION['authenticated']) || $_SESSION['authenticated'] !== true) {
 
     <div id="statusMessage"></div>
 
-    <button type="button" class="btn-admin btn-blue" id="btnPrint">
-        Imprimer les listes (sauf livré)
+    <button type="button" class="btn-admin btn-blue" id="btnPrintService">
+        Imprimer les listes de service
+    </button>
+	
+	<button type="button" class="btn-admin btn-blue" id="btnPrintParkingLot">
+        Imprimer la liste du Parking Lot
+    </button>
+	
+	<button type="button" class="btn-admin btn-blue" id="btnPrintLivrer">
+        Imprimer la liste Livré
     </button>
     
     <button type="button" class="btn-admin btn-blue" id="btnSort">
@@ -94,7 +102,9 @@ if (!isset($_SESSION['authenticated']) || $_SESSION['authenticated'] !== true) {
     const statusMsg = document.getElementById('statusMessage');
     const btnInit = document.getElementById('btnInit');
     const btnSort = document.getElementById('btnSort');
-    const btnPrint = document.getElementById('btnPrint');
+    const btnPrintService = document.getElementById('btnPrintService');
+	const btnPrintParkingLot = document.getElementById('btnPrintParkingLot');
+	const btnPrintLivrer = document.getElementById('btnPrintLivrer');
 
     function showFlash(text, type) {
         statusMsg.textContent = text;
@@ -160,78 +170,60 @@ if (!isset($_SESSION['authenticated']) || $_SESSION['authenticated'] !== true) {
         });
     });
     
-    btnPrint.addEventListener('click', function() {
-    const formData = new FormData();
-    formData.append('adminAction', 'getPrintData');
+    
+	// Fonction générique pour l'impression
+    function handlePrint(actionType) {
+        const formData = new FormData();
+        formData.append('adminAction', actionType);
 
-    fetch('action3.php', { method: 'POST', body: formData })
-    .then(response => response.json())
-    .then(res => {
-        if (res.status === 'success') {
-            const printWindow = window.open('', '_blank');
-            let content = `<html><head><title>Impression Atelier</title>
-                <style>
-                    body { font-family: sans-serif; padding: 20px; }
-                    /* Style pour forcer le saut de page */
-                    .list-section { 
-                        page-break-before: always; 
-                        padding-top: 0px;
-                    }
-                    /* Empêche le saut de page sur la toute première liste */
-                    .list-section:first-of-type { 
-                        page-break-before: auto; 
-                    }
-                    h1 {
-                        text-transform: uppercase;
-                        font-size: 1.1rem;
-                    }
-                    h2 { 
-                        color: #2c3e50; 
-                        border-left: 5px solid #007bff; 
-                        padding-left: 10px; 
-                        text-transform: uppercase;
-                        border-bottom: 2px solid #eee;
-                        padding-bottom: 10px;
-                        font-size: 1.0rem;
-                    }
-                    ul { list-style: none; padding: 0; }
-                    li { 
-                        padding: 8px 0; 
-                        border-bottom: 1px dotted #ccc; 
-                        font-size: 0.7rem;
-                    }
-                    .date-header { text-align: right; font-size: 0.9rem; color: #666; }
-                </style></head><body>`;
-            
-            for (const [listName, cards] of Object.entries(res.data)) {
-                content += `<div class="list-section">
-                                <div class="date-header">Imprimé le : ${new Date().toLocaleString('fr-FR')}</div>
-                                <h1 style="text-align:center;">Rapport d'Atelier</h1>
-                                <h2>${listName} (${cards.length} unités)</h2>
-                                <ul>`;
+        fetch('action3.php', { method: 'POST', body: formData })
+        .then(response => response.json())
+        .then(res => {
+            if (res.status === 'success') {
+                const printWindow = window.open('', '_blank');
+                let content = `<html><head><title>Impression Trello</title>
+                    <style>
+                        body { font-family: sans-serif; padding: 20px; }
+                        .list-section { page-break-before: always; padding-top: 0px; }
+                        .list-section:first-of-type { page-break-before: auto; }
+                        h1 { text-transform: uppercase; font-size: 1.1rem; text-align:center; }
+                        h2 { color: #2c3e50; border-left: 5px solid #007bff; padding-left: 10px; text-transform: uppercase; border-bottom: 2px solid #eee; padding-bottom: 10px; font-size: 1.0rem; }
+                        ul { list-style: none; padding: 0; }
+                        li { padding: 8px 0; border-bottom: 1px dotted #ccc; font-size: 0.8rem; }
+                        .date-header { text-align: right; font-size: 0.8rem; color: #666; }
+                    </style></head><body>`;
                 
-                if (cards.length === 0) {
-                    content += "<li>Aucune unité dans cette liste</li>";
-                } else {
-                    cards.forEach(card => {
-                        content += `<li>[&nbsp;&nbsp;&nbsp;]&nbsp;&nbsp;${card.name}</li>`;
-                    });
+                for (const [listName, cards] of Object.entries(res.data)) {
+                    content += `<div class="list-section">
+                                    <div class="date-header">Imprimé le : ${new Date().toLocaleString('fr-FR')}</div>
+                                    <h1>Rapport d'Atelier</h1>
+                                    <h2>${listName} (${cards.length} unités)</h2>
+                                    <ul>`;
+                    
+                    if (cards.length === 0) {
+                        content += "<li>Aucune unité dans cette liste</li>";
+                    } else {
+                        cards.forEach(card => {
+                            content += `<li>[ &nbsp;&nbsp; ] &nbsp;&nbsp; ${card.name}</li>`;
+                        });
+                    }
+                    content += `</ul></div>`;
                 }
-                
-                content += `</ul></div>`;
-            }
 
-            content += `</body></html>`;
-            printWindow.document.write(content);
-            printWindow.document.close();
-            
-            // Un léger délai pour s'assurer que le contenu est chargé avant de lancer l'impression
-            setTimeout(() => {
-                printWindow.print();
-            }, 500);
-        }
-    });
-});
+                content += `</body></html>`;
+                printWindow.document.write(content);
+                printWindow.document.close();
+                setTimeout(() => { printWindow.print(); }, 500);
+            } else {
+                showFlash("Erreur: " + res.message, "error");
+            }
+        });
+    }
+
+    // Liaison des boutons aux actions
+    btnPrintService.addEventListener('click', () => handlePrint('getPrintDataService'));
+    btnPrintParkingLot.addEventListener('click', () => handlePrint('getPrintDataParking'));
+    btnPrintLivrer.addEventListener('click', () => handlePrint('getPrintDataLivrer'));
 </script>
 
 </body>
