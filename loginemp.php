@@ -1,17 +1,25 @@
 <?php
 $config = require 'config3.php';
 
+// Configuration de la durée de session basée sur le fichier config
 ini_set('session.gc_maxlifetime', $config['SESSION_DURATION']);
 ini_set('session.cookie_lifetime', $config['SESSION_DURATION']);
 session_start();
+
+// Redirection automatique si déjà connecté
+if (isset($_SESSION['authenticated']) && $_SESSION['authenticated'] === true) {
+    header('Location: operation3.php');
+    exit;
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $user = $_POST['user'] ?? '';
     $pass = $_POST['pass'] ?? '';
 
-    if (isset($config['USERS'][$user]) && $config['USERS'][$user] === $pass) {
+    // Vérification dans le tableau multidimensionnel des USERS
+    if (isset($config['USERS'][$user]) && $config['USERS'][$user]['password'] === $pass) {
         $_SESSION['authenticated'] = true;
-        $_SESSION['username'] = $user;
+        $_SESSION['username'] = $user; // Stocke l'identifiant pour les permissions
         header('Location: operation3.php');
         exit;
     } else {
@@ -54,10 +62,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             display: block; 
             width: 100%; 
             margin-bottom: 15px; 
-            padding: 16px; /* Plus grand pour le tactile */
+            padding: 16px; 
             border: 1px solid #ddd;
             border-radius: 8px;
-            font-size: 1.5rem; /* Empêche le zoom automatique iOS */
+            font-size: 1.2rem; 
             box-sizing: border-box;
         }
         input:focus {
@@ -97,7 +105,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <h2>Accès restreint</h2>
         
         <?php if (isset($error)): ?>
-            <div class="error-msg"><?php echo $error; ?></div>
+            <div class="error-msg"><?php echo htmlspecialchars($error); ?></div>
         <?php endif; ?>
 
         <form method="POST">

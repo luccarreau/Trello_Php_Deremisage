@@ -1,17 +1,25 @@
 <?php
 $config = require 'config3.php';
 
+// Configuration de la durée de session basée sur le fichier config
 ini_set('session.gc_maxlifetime', $config['SESSION_DURATION']);
 ini_set('session.cookie_lifetime', $config['SESSION_DURATION']);
 session_start();
+
+// Redirection automatique si déjà connecté
+if (isset($_SESSION['authenticated']) && $_SESSION['authenticated'] === true) {
+    header('Location: admin3.php');
+    exit;
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $user = $_POST['user'] ?? '';
     $pass = $_POST['pass'] ?? '';
 
-    if (isset($config['USERS'][$user]) && $config['USERS'][$user] === $pass) {
+    // Vérification dans le tableau multidimensionnel des USERS
+    if (isset($config['USERS'][$user]) && $config['USERS'][$user]['password'] === $pass) {
         $_SESSION['authenticated'] = true;
-        $_SESSION['username'] = $user;
+        $_SESSION['username'] = $user; // Stocke l'identifiant pour les permissions
         header('Location: admin3.php');
         exit;
     } else {
