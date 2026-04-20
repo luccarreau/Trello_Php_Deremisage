@@ -29,12 +29,13 @@ $hideRadioGroup = (count($userCats) === 1 && !can('mecanique', $userPermissions)
 $defaultAction = ($hideRadioGroup) ? $userCats[0] : '';
 
 // Trello API
+$TRELLO_BASE_URL  = $config['BASE_URL'];
 $TRELLO_KEY      = $config['API_KEY'];
 $TRELLO_TOKEN    = $config['API_TOKEN'];
 $TRELLO_BOARD_ID = $config['BOARD_ID'];
 $EXCLUDE_LIST_IDS = [$config['LIST_PARKINGLOT'], $config['LIST_LIVRE']];
 
-$url   = "https://api.trello.com/1/boards/{$TRELLO_BOARD_ID}/cards?key={$TRELLO_KEY}&token={$TRELLO_TOKEN}&fields=name,idList";
+$url   = "{$TRELLO_BASE_URL}boards/{$TRELLO_BOARD_ID}/cards?key={$TRELLO_KEY}&token={$TRELLO_TOKEN}&fields=name,idList";
 $json  = @file_get_contents($url);
 $cards = $json ? json_decode($json, true) : [];
 $filteredCards = array_filter($cards, fn($card) => !in_array($card['idList'], $EXCLUDE_LIST_IDS));

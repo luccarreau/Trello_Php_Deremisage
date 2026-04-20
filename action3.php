@@ -224,8 +224,6 @@ function moveCardToList($cardId, $idListDest, $config) {
         : ['status' => 'error', 'code' => $httpCode, 'message' => 'Erreur lors du déplacement'];
 }
 
-// ... (Le reste des fonctions addCheckListAFaire, sortListByDueDate, getPrintData semble correct)
-
 function addCheckListAFaire($config) {
     $url = "{$config['baseUrl']}boards/{$config['boardId']}/cards?key={$config['key']}&token={$config['token']}&fields=id";
     $response = @file_get_contents($url);
@@ -296,7 +294,7 @@ function getPrintData($lists, $config) {
     $data = [];
     foreach ($lists as $name => $id) {
         if (!$id) continue;
-        $url = "https://api.trello.com/1/lists/{$id}/cards?key={$config['key']}&token={$config['token']}&fields=name";
+		$url = "{$config['baseUrl']}lists/{$id}/cards?key={$config['key']}&token={$config['token']}&fields=name";
         $response = @file_get_contents($url);
         $data[$name] = $response ? json_decode($response, true) : [];
     }
