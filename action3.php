@@ -2,7 +2,7 @@
 // action3.php
 $config = require 'config3.php';
 
-// Configuration de la session basée sur la config
+// Configuration de la session
 ini_set('session.gc_maxlifetime', $config['SESSION_DURATION']);
 ini_set('session.cookie_lifetime', $config['SESSION_DURATION']);
 session_start();
@@ -15,7 +15,7 @@ if (!isset($_SESSION['authenticated']) || $_SESSION['authenticated'] !== true) {
 
 header('Content-Type: application/json; charset=utf-8');
 
-// Préparation du tableau de configuration Trello local
+// Configuration Trello
 $trelloConfig = [
     'key'             => $config['API_KEY'],
     'token'           => $config['API_TOKEN'],
@@ -28,15 +28,9 @@ $trelloConfig = [
     'listlavage'      => $config['LIST_LAVAGE'],
     'listinspection'  => $config['LIST_INSPECTION'],
     'listpretalivrer' => $config['LIST_PRETALIVRER'],
-    'listlivre'      => $config['LIST_LIVRE'],
-    // Labels
-    'labelBateau'     => $config['LABEL_BATEAU'],
-    'labelPonton'     => $config['LABEL_PONTON'],
-    'labelMotomarine' => $config['LABEL_MOTOMARINE'],
-    'labelChaloupe'   => $config['LABEL_CHALOUPE']
+    'listlivre'        => $config['LIST_LIVRE']
 ];
 
-// Vérification de la méthode POST
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
     
     // --- Contrôleur ADMIN ---
@@ -49,67 +43,47 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
             case 'sortCards':
                 $total = 0;
-                $total += sortListByDueDate($trelloConfig['listsemaine'], $trelloConfig);
-                $total += sortListByDueDate($trelloConfig['listmecanique'], $trelloConfig);
-                $total += sortListByDueDate($trelloConfig['listenattente'], $trelloConfig);
-                $total += sortListByDueDate($trelloConfig['listlavage'], $trelloConfig);
-                $total += sortListByDueDate($trelloConfig['listinspection'], $trelloConfig);
-                returnResponse(200, 'success', "{$total} cartes ont été triées par date d'échéance.");
+                $listsToSort = ['listsemaine', 'listmecanique', 'listenattente', 'listlavage', 'listinspection'];
+                foreach ($listsToSort as $listKey) {
+                    $total += sortListByDueDate($trelloConfig[$listKey], $trelloConfig);
+                }
+                returnResponse(200, 'success', "{$total} cartes ont été triées.");
                 break;
                 
             case 'getPrintDataService':
-				// IDs des listes pour l'atelier (Semaine, Mécanique, Lavage, etc.)
-				$lists = [
-					'SEMAINE prêt pour de-shrink' => $trelloConfig['listsemaine'],
-					'PRÊT POUR MÉCANIQUE'         => $trelloConfig['listmecanique'],
-					'EN ATTENTE'                  => $trelloConfig['listenattente'],
-					'PRÊT POUR LAVAGE'            => $trelloConfig['listlavage'],
-					'PRÊT POUR INSPECTION'        => $trelloConfig['listinspection'],
-					'PRÊT À LIVRER'               => $trelloConfig['listpretalivrer']
-				];
-				getPrintData($lists, $trelloConfig);
-				break;
+                $lists = [
+                    'SEMAINE prêt pour de-shrink' => $trelloConfig['listsemaine'],
+                    'PRÊT POUR MÉCANIQUE'         => $trelloConfig['listmecanique'],
+                    'EN ATTENTE'                  => $trelloConfig['listenattente'],
+                    'PRÊT POUR LAVAGE'            => $trelloConfig['listlavage'],
+                    'PRÊT POUR INSPECTION'        => $trelloConfig['listinspection'],
+                    'PRÊT À LIVRER'               => $trelloConfig['listpretalivrer']
+                ];
+                getPrintData($lists, $trelloConfig);
+                break;
 
-			case 'getPrintDataParking':
-				$lists = [
-					'PARKING LOT' => $trelloConfig['listparkinglot']
-				];
-				getPrintData($lists, $trelloConfig);
-				break;
+            case 'getPrintDataParking':
+                getPrintData(['PARKING LOT' => $trelloConfig['listparkinglot']], $trelloConfig);
+                break;
 
-			case 'getPrintDataLivrer':
-				$lists = [
-					'LIVRÉ' => $trelloConfig['listlivre']
-				];
-				getPrintData($lists, $trelloConfig);
-				break;
+            case 'getPrintDataLivrer':
+                getPrintData(['LIVRÉ' => $trelloConfig['listlivre']], $trelloConfig);
+                break;
 
             default:
                 returnResponse(400, 'error', "Action administrative inconnue.");
-                break;
         }
-        exit;
     }
     
     // --- Contrôleur OPÉRATION ---
     if (isset($_POST['operationAction'])) {
         $formParams = getCleanPostData();
-        if ($formParams) {
-            $cardId     = $formParams['cardId'];
-            $cardAction = $formParams['action'];
-            
-            switch ($_POST['operationAction']) {
-                case 'applyAction':
-                    applyAction($cardId, $cardAction, $trelloConfig);
-                    break;
-                default:
-                    returnResponse(400, 'error', "Action d'opération inconnue.");
-                    break;
-            }
+        if ($formParams && $_POST['operationAction'] === 'applyAction') {
+            $result = applyAction($formParams['cardId'], $formParams['action'], $trelloConfig);
+            returnResponse($result['code'], $result['status'], $result['message']);
         } else {
-            returnResponse(400, 'error', 'Données manquantes (cardId ou action)');
+            returnResponse(400, 'error', 'Données manquantes ou action invalide');
         }
-        exit;
     }
 } else {
     returnResponse(405, 'error', 'Méthode non autorisée');
@@ -120,34 +94,53 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
  */
 
 function applyAction($cardId, $cardAction, $config) {
+    $checkListName = 'À faire';
+    
+    $checkItems = getCheckListItems($cardId, $checkListName, $config);
+    if ($checkItems === null) {
+        return ['status' => 'error', 'code' => 404, 'message' => "Checklist '{$checkListName}' introuvable."];
+    }
+
+    $checkitemId = getCheckitemIdByName($checkItems, $cardAction);
+    if ($checkitemId === null && $cardAction !== 'mecanique_standby') {
+        return ['status' => 'error', 'code' => 404, 'message' => "Élément '{$cardAction}' introuvable dans la checklist."];
+    }
+
     switch ($cardAction) {
         case 'deshrink':
-            $result = checkAndMoveCard($cardId, $cardAction, $config['listmecanique'], $config);
-            break;
+            setCheckItem($cardId, $checkitemId, $config);
+            return moveCardToList($cardId, $config['listmecanique'], $config);
+            
         case 'mecanique':
-            $result = checkAndMoveCard($cardId, $cardAction, $config['listlavage'], $config);
-            break;
-        case 'mecanique_standby':
-            $result = moveCardToList($cardId, $config['listenattente'], $config);
-            break;
         case 'lavage':
-            $result = checkAndMoveCard($cardId, $cardAction, $config['listinspection'], $config);
-            break;
-        default:
-            returnResponse(400, 'error', "Action non reconnue : {$cardAction}");
-            return;
-    }
-    returnResponse($result['code'], $result['status'], $result['message']);
-}
+            setCheckItem($cardId, $checkitemId, $config);
+            
+            // Recharger/analyser les items pour décider du mouvement
+            $mecaniqueDone = false;
+            $lavageDone = false;
 
-function checkAndMoveCard($cardId, $cardAction, $listId, $config) {
-    $checkitemId = getCheckitemIdByName($cardId, $cardAction, $config);
-    if ($checkitemId) {
-        $result = setCheckItem($cardId, $checkitemId, $config);
-        if ($result['status'] === 'error') return $result;
-        return moveCardToList($cardId, $listId, $config);
-    } else {
-        return ['status' => 'error', 'code' => 404, 'message' => "Élément de checklist '{$cardAction}' introuvable."];
+            // Note : Pour être 100% précis, il faudrait refaire un appel API ici 
+            // ou mettre à jour localement $checkItems. Ici on met à jour localement :
+            foreach ($checkItems as &$item) {
+                $name = trim($item['name']);
+                if ($name === 'Mécanique' && ($cardAction === 'mecanique' || $item['state'] === 'complete')) $mecaniqueDone = true;
+                if ($name === 'Lavage' && ($cardAction === 'lavage' || $item['state'] === 'complete')) $lavageDone = true;
+            }
+            
+            if ($mecaniqueDone && $lavageDone) {
+                return moveCardToList($cardId, $config['listinspection'], $config);
+            } elseif ($mecaniqueDone) {
+                return moveCardToList($cardId, $config['listlavage'], $config);
+            } elseif ($lavageDone) {
+                return moveCardToList($cardId, $config['listmecanique'], $config);
+            }
+            return ['status' => 'success', 'code' => 200, 'message' => 'Item coché, mais aucun déplacement requis.'];
+
+        case 'mecanique_standby':
+            return moveCardToList($cardId, $config['listenattente'], $config);
+            
+        default:
+            return ['status' => 'error', 'code' => 400, 'message' => "Action non reconnue : {$cardAction}"];
     }
 }
 
@@ -165,20 +158,28 @@ function getCleanPostData() {
     ];
 }
 
-function getCheckitemIdByName($cardId, $actionName, $config) {
+function getCheckListItems($cardId, $checkListName, $config) {
     $url = "{$config['baseUrl']}cards/{$cardId}/checklists?key={$config['key']}&token={$config['token']}";
-
     $response = @file_get_contents($url);
     if ($response === false) return null;
     
     $checklists = json_decode($response, true);
-    $mapping = ['deshrink' => 'De-Shrink', 'mecanique' => 'Mécanique', 'lavage' => 'Lavage'];
-    $checkAction = $mapping[$actionName] ?? '';
+    if (!is_array($checklists)) return null;
 
     foreach ($checklists as $checklist) {
-        foreach ($checklist['checkItems'] as $item) {
-            if (trim($item['name']) === $checkAction) return $item['id'];
+        if (isset($checklist['name']) && trim($checklist['name']) === $checkListName) {
+            return $checklist['checkItems'];
         }
+    }
+    return null;
+}
+
+function getCheckitemIdByName($checkItems, $actionKey) {
+    $mapping = ['deshrink' => 'De-Shrink', 'mecanique' => 'Mécanique', 'lavage' => 'Lavage', 'inspection' => 'Inspection'];
+    $targetName = $mapping[$actionKey] ?? '';
+
+    foreach ($checkItems as $item) {
+        if (trim($item['name']) === $targetName) return $item['id'];
     }
     return null;
 }
@@ -194,14 +195,16 @@ function setCheckItem($cardId, $checkitemId, $config) {
         CURLOPT_CUSTOMREQUEST => 'PUT',
         CURLOPT_SSL_VERIFYPEER => false
     ]);
-    $response = curl_exec($ch);
+    $res = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
     
-    return ($httpCode === 200) ? ['status' => 'success', 'code' => 200] : ['status' => 'error', 'code' => $httpCode];
+    return ($httpCode === 200);
 }
 
 function moveCardToList($cardId, $idListDest, $config) {
+    if (!$idListDest) return ['status' => 'error', 'code' => 400, 'message' => 'ID de liste de destination manquant'];
+
     $url = "{$config['baseUrl']}cards/{$cardId}";
     $queryParams = http_build_query(['key' => $config['key'], 'token' => $config['token'], 'idList' => $idListDest, 'pos' => 'top']);
 
@@ -212,12 +215,16 @@ function moveCardToList($cardId, $idListDest, $config) {
         CURLOPT_CUSTOMREQUEST => 'PUT',
         CURLOPT_SSL_VERIFYPEER => false
     ]);
-    $response = curl_exec($ch);
+    curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
     
-    return ($httpCode === 200) ? ['status' => 'success', 'code' => 200, 'message' => 'Succès'] : ['status' => 'error', 'code' => $httpCode];
+    return ($httpCode === 200) 
+        ? ['status' => 'success', 'code' => 200, 'message' => 'Carte mise à jour et déplacée'] 
+        : ['status' => 'error', 'code' => $httpCode, 'message' => 'Erreur lors du déplacement'];
 }
+
+// ... (Le reste des fonctions addCheckListAFaire, sortListByDueDate, getPrintData semble correct)
 
 function addCheckListAFaire($config) {
     $url = "{$config['baseUrl']}boards/{$config['boardId']}/cards?key={$config['key']}&token={$config['token']}&fields=id";
@@ -261,13 +268,14 @@ function addCheckListAFaireCard($cardId, $config) {
 }
 
 function sortListByDueDate($listId, $config) {
+    if (!$listId) return 0;
     $url = "{$config['baseUrl']}lists/{$listId}/cards?key={$config['key']}&token={$config['token']}&fields=id,due";
     $cards = json_decode(@file_get_contents($url), true) ?: [];
     if (empty($cards)) return 0;
 
     usort($cards, function($a, $b) {
-        $da = $a['due'] ? strtotime($a['due']) : PHP_INT_MAX;
-        $db = $b['due'] ? strtotime($b['due']) : PHP_INT_MAX;
+        $da = !empty($a['due']) ? strtotime($a['due']) : PHP_INT_MAX;
+        $db = !empty($b['due']) ? strtotime($b['due']) : PHP_INT_MAX;
         return $da <=> $db;
     });
 
@@ -287,6 +295,7 @@ function sortListByDueDate($listId, $config) {
 function getPrintData($lists, $config) {
     $data = [];
     foreach ($lists as $name => $id) {
+        if (!$id) continue;
         $url = "https://api.trello.com/1/lists/{$id}/cards?key={$config['key']}&token={$config['token']}&fields=name";
         $response = @file_get_contents($url);
         $data[$name] = $response ? json_decode($response, true) : [];
@@ -298,5 +307,3 @@ function getPrintData($lists, $config) {
     ]);
     exit;
 }
-
-?>
