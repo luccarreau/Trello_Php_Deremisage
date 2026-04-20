@@ -28,7 +28,10 @@ $trelloConfig = [
     'listlavage'      => $config['LIST_LAVAGE'],
     'listinspection'  => $config['LIST_INSPECTION'],
     'listpretalivrer' => $config['LIST_PRETALIVRER'],
-    'listlivre'        => $config['LIST_LIVRE']
+    'listlivre'       => $config['LIST_LIVRE'],
+	'label_ponton'    => $config['LABEL_PONTON'],
+    'label_bateau'    => $config['LABEL_BATEAU'],
+    'label_motomarine'=> $config['LABEL_MOTOMARINE']
 ];
 
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
@@ -59,15 +62,15 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     'PRÊT POUR INSPECTION'        => $trelloConfig['listinspection'],
                     'PRÊT À LIVRER'               => $trelloConfig['listpretalivrer']
                 ];
-                getPrintData($lists, $trelloConfig);
+                getPrintDataByLabel($lists, $trelloConfig);
                 break;
 
             case 'getPrintDataParking':
-                getPrintData(['PARKING LOT' => $trelloConfig['listparkinglot']], $trelloConfig);
+                getPrintDataByLabel(['PARKING LOT' => $trelloConfig['listparkinglot']], $trelloConfig);
                 break;
 
             case 'getPrintDataLivrer':
-                getPrintData(['LIVRÉ' => $trelloConfig['listlivre']], $trelloConfig);
+                getPrintDataByLabel(['LIVRÉ' => $trelloConfig['listlivre']], $trelloConfig);
                 break;
 
             default:
@@ -299,6 +302,55 @@ function getPrintData($lists, $config) {
         $data[$name] = $response ? json_decode($response, true) : [];
     }
     
+    echo json_encode([
+        'status' => 'success',
+        'data' => $data
+    ]);
+    exit;
+}
+
+function getPrintDataByLabel($lists, $config) {
+    $data = []; // Tableau final qui contiendra chaque liste fusionnée
+
+    // Définition des IDs de labels
+    $labelIds = [
+        'PONTON'     => $config['label_ponton'],
+        'BATEAU'     => $config['label_bateau'],
+        'MOTOMARINE' => $config['label_motomarine']
+    ];
+    
+    foreach ($lists as $listName => $listId) {
+        if (!$listId) continue;
+
+        // RÉINITIALISATION pour chaque nouvelle liste Trello
+        $pontons = [];
+        $bateaux = [];
+        $motos = [];
+
+        $url = "{$config['baseUrl']}lists/{$listId}/cards?key={$config['key']}&token={$config['token']}&fields=name,idLabels";
+        $response = @file_get_contents($url);
+        $cards = $response ? json_decode($response, true) : [];
+
+        foreach ($cards as $card) {
+            $cardName = $card['name'];
+            $cardLabels = $card['idLabels'] ?? [];
+
+            if (in_array($labelIds['PONTON'], $cardLabels)) {
+                $pontons[] = ['name' => "PONTON " . $cardName];
+            } 
+            elseif (in_array($labelIds['BATEAU'], $cardLabels)) {
+                $bateaux[] = ['name' => "BATEAU " . $cardName];
+            } 
+            elseif (in_array($labelIds['MOTOMARINE'], $cardLabels)) {
+                $motos[] = ['name' => "MOTOMARINE " . $cardName];
+            }
+        }
+
+        // FUSION pour CETTE liste spécifique (on respecte l'ordre demandé)
+        // On range le résultat dans la clé correspondant au nom de la liste
+        $data[$listName] = array_merge($pontons, $bateaux, $motos);
+    }
+
     echo json_encode([
         'status' => 'success',
         'data' => $data
