@@ -1,8 +1,11 @@
 <?php
 // action3.php
-$config = require 'config3.php';
+$path = $_SERVER['DOCUMENT_ROOT'];
+include_once $path . '/wp-config.php'; // Ou wp-load.php
+include_once $path . '/wp-includes/wp-db.php';
 
 // Configuration de la session
+$config = require 'config3.php';
 ini_set('session.gc_maxlifetime', $config['SESSION_DURATION']);
 ini_set('session.cookie_lifetime', $config['SESSION_DURATION']);
 session_start();
@@ -92,10 +95,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     returnResponse(405, 'error', 'Méthode non autorisée');
 }
 
-/**
- * Fonctions de traitement
- */
-
 function applyAction($cardId, $cardAction, $config) {
     $checkListName = 'À faire';
     
@@ -111,6 +110,8 @@ function applyAction($cardId, $cardAction, $config) {
 
     switch ($cardAction) {
         case 'deshrink':
+            updateinsertShrinkData($cardId, $config);
+
             setCheckItem($cardId, $checkitemId, $config);
             return moveCardToList($cardId, $config['listmecanique'], $config);
             
@@ -357,3 +358,78 @@ function getPrintDataByLabel($lists, $config) {
     ]);
     exit;
 }
+
+function getCardName($cardId, $config) {
+    // Construction de l'URL avec les paramètres de sécurité et le champ 'name' uniquement
+    $url = "{$config['baseUrl']}cards/{$cardId}?key={$config['key']}&token={$config['token']}&fields=name";
+    
+    // Appel à l'API
+    $response = @file_get_contents($url);
+    
+    if ($response) {
+        $card = json_decode($response, true);
+        return $card['name'] ?? null;
+    }
+    
+    return null;
+}
+
+function updateinsertShrinkData($cardId, $config) {
+    global $wpdb;
+    
+    $cardName = getCardName($cardId, $config);
+    if($cardName == null)
+        return;
+
+    $cardName = trim($cardName);
+    $words = explode(' ', $cardName);
+    $serial = end($words);
+    
+    $type = $_POST['deshrink'] ?? ''; 
+    $frame_number = '';
+    
+    if($type === 'frame')
+        $frame_number = $_POST['frame_number'] ?? '';
+        
+    $serial = mb_substr($serial, 0, 50);
+    $type = mb_substr($type, 0, 20);
+    $frame_number = mb_substr($frame_number, 0, 20);
+    $description = mb_substr($cardName, 0, 250);
+    
+    $table_name = $wpdb->prefix . 'sdm_shrink';
+
+    $exists = $wpdb->get_var($wpdb->prepare(
+        "SELECT COUNT(*) FROM $table_name WHERE serialnumber = %s",
+        $serial
+    ));
+    
+    if ($exists > 0) {
+        $result = $wpdb->update(
+            $table_name,
+            array(
+                'type'         => sanitize_text_field($type),
+                'frame_number' => sanitize_text_field($frame_number),
+                'description' => sanitize_text_field($description)
+            ),
+            array('serialnumber' => $serial),
+            array('%s', '%s', '%s'),
+            array('%s')
+        );
+    } else {
+        $result = $wpdb->insert(
+            $table_name,
+            array(
+                'serialnumber' => sanitize_text_field($serial),
+                'type'         => sanitize_text_field($type),
+                'frame_number' => sanitize_text_field($frame_number),
+                'description' => sanitize_text_field($cardName)
+            ),
+            array('%s', '%s', '%s', '%s')
+        );
+        
+        echo $result;
+    }
+
+    return $result !== false;
+}
+?>

@@ -99,7 +99,7 @@ usort($options, fn($a, $b) => strcmp($a['name'], $b['name']));
                 <label>Action effectuée</label>
                 <div class="radio-group">
                     <?php if (can('deshrink', $userPermissions)): ?>
-                        <label class="radio-item"><input type="radio" name="action" value="deshrink" required checked> Deshrink terminé</label>
+                        <label class="radio-item"><input type="radio" name="action" value="deshrink"> Deshrink terminé</label>
                     <?php endif; ?>
                     <?php if (can('mecanique', $userPermissions)): ?>
                         <label class="radio-item"><input type="radio" name="action" value="mecanique"> Mécanique terminé</label>
@@ -114,17 +114,17 @@ usort($options, fn($a, $b) => strcmp($a['name'], $b['name']));
 
         <?php if (can('deshrink', $userPermissions)): ?>
         <div class="form-group" id="deshrink-details">
-            <label>Détails De-Shrink</label>
+            <label>Information poteaux/frame</label>
             <div class="radio-group">
-                <label class="radio-item"><input type="radio" name="deshrink" value="petitpoteaux"> Petit poteaux</label>
-                <label class="radio-item"><input type="radio" name="deshrink" value="grandpoteaux"> Grand Poteaux</label>
+                <label class="radio-item"><input type="radio" name="deshrink" value="petitspoteaux"> Petits poteaux</label>
+                <label class="radio-item"><input type="radio" name="deshrink" value="grandspoteaux"> Grands Poteaux</label>
                 <label class="radio-item"><input type="radio" name="deshrink" value="frame"> Frame</label>
-                <input type="text" name="numframe" placeholder="Numéro de frame" style="width:100%; padding:8px; margin-top:5px; border:1px solid #ddd; border-radius:4px; box-sizing:border-box;">
+                <input type="text" name="frame_number" placeholder="Numéro de frame" style="width:100%; padding:8px; margin-top:5px; border:1px solid #ddd; border-radius:4px; box-sizing:border-box;">
             </div>
         </div>
         <?php endif; ?>
 
-        <button type="submit">Valider</button>
+        <button type="submit">Processer</button>
     </form>
 </div>
 
@@ -173,9 +173,29 @@ usort($options, fn($a, $b) => strcmp($a['name'], $b['name']));
 
     document.getElementById('interventionForm').onsubmit = function(e) {
         e.preventDefault();
-        if(!document.getElementById('ddHiddenId').value) { alert("Choisissez une embarcation"); return; }
+        
+        if(!document.getElementById('ddHiddenId').value) { 
+            alert("Choisissez une embarcation"); 
+            return; }
         
         const fd = new FormData(this);
+        const mainAction = fd.get('action');    
+        if (mainAction === 'deshrink') {
+            const deshrinkOption = fd.get('deshrink');
+            const frame_number = fd.get('frame_number') ? fd.get('frame_number').trim() : "";
+        
+            if (!deshrinkOption) {
+                alert("Veuillez sélectionner le type de poteaux ou frame.");
+                return;
+            }
+            
+            if (deshrinkOption === 'frame' && frame_number === "") {
+                alert("Veuillez saisir le numéro de frame.");
+                document.querySelector('input[name="frame_number"]').focus();
+                return;
+            }
+        }
+        
         fd.append('operationAction', 'applyAction');
         
         fetch('action3.php', { method: 'POST', body: fd })
