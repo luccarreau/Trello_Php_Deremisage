@@ -85,7 +85,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     if (isset($_POST['operationAction'])) {
         $formParams = getCleanPostData();
         if ($formParams && $_POST['operationAction'] === 'applyAction') {
-            $result = applyAction($formParams['cardId'], $formParams['action'], $trelloConfig);
+            $result = applyAction($formParams['cardId'], $formParams['embarcationName'], $formParams['action'], $trelloConfig);
             returnResponse($result['code'], $result['status'], $result['message']);
         } else {
             returnResponse(400, 'error', 'Données manquantes ou action invalide');
@@ -95,7 +95,9 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     returnResponse(405, 'error', 'Méthode non autorisée');
 }
 
-function applyAction($cardId, $cardAction, $config) {
+function applyAction($cardId, $cardName, $cardAction, $config) {
+    LogUserAction($config);
+    
     $checkListName = 'À faire';
     
     $checkItems = getCheckListItems($cardId, $checkListName, $config);
@@ -110,7 +112,7 @@ function applyAction($cardId, $cardAction, $config) {
 
     switch ($cardAction) {
         case 'deshrink':
-            updateinsertShrinkData($cardId, $config);
+            updateinsertShrinkData($config);
 
             setCheckItem($cardId, $checkitemId, $config);
             return moveCardToList($cardId, $config['listmecanique'], $config);
@@ -157,8 +159,12 @@ function returnResponse($code, $status, $message) {
 function getCleanPostData() {
     if (empty($_POST['cardId']) || empty($_POST['action'])) return null;
     return [
-        'cardId' => htmlspecialchars($_POST['cardId']),
-        'action' => htmlspecialchars($_POST['action'])
+        'cardId'          => htmlspecialchars($_POST['cardId']),
+        'action'          => htmlspecialchars($_POST['action']),
+        'username'        => htmlspecialchars($_POST['username'] ?? 'Anonyme'),
+        'embarcationName' => htmlspecialchars($_POST['embarcationName'] ?? 'Inconnu'),
+        'deshrink'        => htmlspecialchars($_POST['deshrink'] ?? ''),
+        'frame_number'    => htmlspecialchars($_POST['frame_number'] ?? '')
     ];
 }
 
@@ -374,22 +380,25 @@ function getCardName($cardId, $config) {
     return null;
 }
 
-function updateinsertShrinkData($cardId, $config) {
+function updateinsertShrinkData($config) {
     global $wpdb;
     
-    $cardName = getCardName($cardId, $config);
-    if($cardName == null)
-        return;
+    $formParams = getCleanPostData();
+    
+    // Sécurité : on arrête si les données sont absentes
+    if (!$formParams || empty($formParams['embarcationName'])) {
+        return false;
+    }
 
-    $cardName = trim($cardName);
+    $cardName = trim($formParams['embarcationName']);
     $words = explode(' ', $cardName);
     $serial = end($words);
     
-    $type = $_POST['deshrink'] ?? ''; 
+    $type = $formParams['deshrink'] ?? ''; 
     $frame_number = '';
     
     if($type === 'frame')
-        $frame_number = $_POST['frame_number'] ?? '';
+        $frame_number = $formParams['frame_number'] ?? '';
         
     $serial = mb_substr($serial, 0, 50);
     $type = mb_substr($type, 0, 20);
@@ -422,14 +431,38 @@ function updateinsertShrinkData($cardId, $config) {
                 'serialnumber' => sanitize_text_field($serial),
                 'type'         => sanitize_text_field($type),
                 'frame_number' => sanitize_text_field($frame_number),
-                'description' => sanitize_text_field($cardName)
+                'description' => sanitize_text_field($description)
             ),
             array('%s', '%s', '%s', '%s')
         );
-        
-        echo $result;
     }
 
     return $result !== false;
 }
+
+function LogUserAction($config)
+{
+    global $wpdb;
+    
+    $formParams = getCleanPostData();
+    $username     = mb_substr(trim($formParams['username'] ?? 'Anonyme'), 0, 20);
+    $action       = mb_substr(trim($formParams['action'] ?? 'Action inconnue'), 0, 20);
+    $embarcation  = mb_substr(trim($formParams['embarcationName'] ?? 'Embarcation inconnue'), 0, 250);
+
+    $table_name = $wpdb->prefix . 'sdm_logaction';  
+    
+    $result = $wpdb->insert(
+        $table_name,
+        array(
+            'username'     => sanitize_text_field($username),
+            'action'       => sanitize_text_field($action),
+            'embarcation'  => sanitize_text_field($embarcation),
+            'timestamp'    => current_time('mysql')
+        ),
+        array('%s', '%s', '%s', '%s')
+    );
+        
+    return $result !== false;
+}
+
 ?>

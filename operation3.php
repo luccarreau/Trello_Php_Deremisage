@@ -90,6 +90,7 @@ usort($options, fn($a, $b) => strcmp($a['name'], $b['name']));
             </div>
             <input type="hidden" name="embarcationName" id="ddHiddenName" required>
             <input type="hidden" name="cardId" id="ddHiddenId" required>
+            <input type="hidden" name="username" id="ddHiddenUsername" value="<?= $username ?>" required>
         </div>
 
         <?php if ($hideRadioGroup): ?>
